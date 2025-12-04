@@ -1,8 +1,7 @@
-# OpenTelemetry Collector Configuration
-# Receives OTLP data and exports to Dynatrace and Prometheus
+# Based on Dynatrace Official Multi-Export Example
+# https://docs.dynatrace.com/docs/ingest-from/opentelemetry/collector/use-cases/multi-export
 
 receivers:
-  # OTLP receiver - accepts traces, metrics, and logs
   otlp:
     protocols:
       grpc:
@@ -11,79 +10,45 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # Batch processor - batches telemetry data before export
   batch:
     timeout: 10s
     send_batch_size: 1024
-    send_batch_max_size: 2048
-
-  # Resource processor - add/modify resource attributes
-  resource:
-    attributes:
-      - key: deployment.environment
-        value: lab
-        action: upsert
-      - key: service.namespace
-        value: otel-demo
-        action: upsert
-
-  # Memory limiter - prevents OOM
-  memory_limiter:
-    check_interval: 1s
-    limit_mib: 512
-    spike_limit_mib: 128
 
 exporters:
-  # Dynatrace exporter
+  # Dynatrace exporter (as per official docs)
   otlphttp/dynatrace:
-    endpoint: ${DYNATRACE_ENDPOINT}  # e.g., https://abc12345.live.dynatrace.com/api/v2/otlp
+    endpoint: ${env:DT_ENDPOINT}
     headers:
-      Authorization: "Api-Token ${DYNATRACE_API_TOKEN}"
+      Authorization: "Api-Token ${env:DT_API_TOKEN}"
 
-  # Prometheus exporter - exposes metrics on port 8889
+  # Prometheus exporter (our addition for multi-backend)
   prometheus:
     endpoint: "0.0.0.0:8889"
-    namespace: otel
-    const_labels:
-      environment: lab
+    namespace: app
 
-  # Debug exporter - useful for debugging (replaces deprecated logging exporter)
+  # Debug exporter (optional, for troubleshooting)
   debug:
-    verbosity: detailed
-    sampling_initial: 5
-    sampling_thereafter: 200
-
-  # OTLP exporter for Prometheus using Remote Write (alternative)
-  # prometheusremotewrite:
-  #   endpoint: "http://prometheus:9090/api/v1/write"
-  #   tls:
-  #     insecure: true
+    verbosity: normal
 
 service:
   pipelines:
-    # Traces pipeline
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch]
+      processors: [batch]
       exporters: [otlphttp/dynatrace, debug]
 
-    # Metrics pipeline
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch]
+      processors: [batch]
       exporters: [otlphttp/dynatrace, prometheus, debug]
 
-    # Logs pipeline
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch]
+      processors: [batch]
       exporters: [otlphttp/dynatrace, debug]
 
-  # Extensions for health checks and metrics
-  extensions: [health_check, pprof]
+  extensions: [health_check]
 
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
-  pprof:
-    endpoint: 0.0.0.0:1777
