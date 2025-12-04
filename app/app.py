@@ -1,5 +1,5 @@
 """
-Sample Flask Application with OpenTelemetry Instrumentation
+Sample Application - Sends data to OpenTelemetry Collector
 """
 
 from flask import Flask, jsonify
@@ -13,13 +13,11 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 import time
-import random
 import os
 
-# Create Flask app
 app = Flask(__name__)
 
-# Configure OpenTelemetry Resource
+# Configure OpenTelemetry
 resource = Resource.create({
     "service.name": os.getenv("OTEL_SERVICE_NAME", "demo-app"),
     "service.version": "1.0.0",
@@ -41,109 +39,38 @@ meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader]
 metrics.set_meter_provider(meter_provider)
 meter = metrics.get_meter(__name__)
 
-# Create custom metrics
+# Create metrics
 request_counter = meter.create_counter(
     name="http_requests_total",
     description="Total HTTP requests",
     unit="1"
 )
 
-request_duration = meter.create_histogram(
-    name="http_request_duration_seconds",
-    description="HTTP request duration",
-    unit="ms"
-)
-
 # Instrument Flask
 FlaskInstrumentor().instrument_app(app)
 
-print("✅ OpenTelemetry configured successfully")
-print(f"📡 Sending data to: {otlp_endpoint}")
+print(f"✅ Sending telemetry to: {otlp_endpoint}")
 
 
 @app.route("/")
 def home():
-    """Home endpoint"""
-    request_counter.add(1, {"endpoint": "/", "method": "GET"})
+    request_counter.add(1, {"endpoint": "/"})
     return jsonify({
-        "message": "Dynatrace OpenTelemetry Lab",
-        "status": "running",
-        "endpoints": ["/", "/api/hello", "/api/data", "/api/slow"]
+        "message": "Dynatrace Multi-Export Lab",
+        "status": "running"
     })
 
 
-@app.route("/api/hello")
-def hello():
-    """Simple hello endpoint"""
-    start = time.time()
-    
-    with tracer.start_as_current_span("hello_handler") as span:
-        span.set_attribute("endpoint", "/api/hello")
+@app.route("/api/test")
+def test():
+    with tracer.start_as_current_span("test_operation") as span:
+        span.set_attribute("endpoint", "/api/test")
+        time.sleep(0.1)  # Simulate work
         
-        name = "World"
-        response = {"message": f"Hello, {name}!"}
-        
-        duration = (time.time() - start) * 1000
-        request_counter.add(1, {"endpoint": "/api/hello", "method": "GET"})
-        request_duration.record(duration, {"endpoint": "/api/hello"})
-        
-        return jsonify(response)
-
-
-@app.route("/api/data")
-def get_data():
-    """Get data endpoint with database simulation"""
-    start = time.time()
-    
-    with tracer.start_as_current_span("get_data") as span:
-        span.set_attribute("endpoint", "/api/data")
-        
-        # Simulate database query
-        with tracer.start_as_current_span("database.query") as db_span:
-            db_span.set_attribute("db.system", "postgresql")
-            db_span.set_attribute("db.operation", "SELECT")
-            time.sleep(0.05)  # Simulate query time
-            
-            data = [
-                {"id": 1, "value": random.randint(1, 100)},
-                {"id": 2, "value": random.randint(1, 100)},
-                {"id": 3, "value": random.randint(1, 100)}
-            ]
-        
-        duration = (time.time() - start) * 1000
-        request_counter.add(1, {"endpoint": "/api/data", "method": "GET"})
-        request_duration.record(duration, {"endpoint": "/api/data"})
-        
-        return jsonify({"data": data})
-
-
-@app.route("/api/slow")
-def slow_endpoint():
-    """Intentionally slow endpoint"""
-    start = time.time()
-    
-    with tracer.start_as_current_span("slow_operation") as span:
-        span.set_attribute("endpoint", "/api/slow")
-        
-        sleep_time = random.uniform(1.0, 2.0)
-        time.sleep(sleep_time)
-        
-        duration = (time.time() - start) * 1000
-        request_counter.add(1, {"endpoint": "/api/slow", "method": "GET"})
-        request_duration.record(duration, {"endpoint": "/api/slow"})
-        
-        return jsonify({
-            "message": "Slow operation completed",
-            "duration": round(sleep_time, 2)
-        })
+        request_counter.add(1, {"endpoint": "/api/test"})
+        return jsonify({"result": "success"})
 
 
 if __name__ == "__main__":
-    print("\n" + "="*60)
-    print("🚀 Starting Dynatrace OpenTelemetry Demo App")
-    print("="*60)
-    print(f"Service Name: {os.getenv('OTEL_SERVICE_NAME', 'demo-app')}")
-    print(f"OTLP Endpoint: {otlp_endpoint}")
-    print("="*60 + "\n")
-    
+    print("🚀 Starting application...")
     app.run(host="0.0.0.0", port=5000, debug=False)
