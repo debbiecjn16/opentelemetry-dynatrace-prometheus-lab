@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # Dynatrace OpenTelemetry Collector
+  otel-collector:
+    image: dynatrace/dynatrace-otel-collector:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics
+      - "13133:13133" # Health check
+    environment:
+      # REPLACE WITH YOUR ACTUAL VALUES!
+      - DT_ENDPOINT=https://YOUR-TENANT.live.dynatrace.com/api/v2/otlp
+      - DT_API_TOKEN=dt0c01.YOUR_TOKEN_HERE
+    networks:
+      - otel-network
+    restart: unless-stopped
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - otel-network
+    restart: unless-stopped
+    depends_on:
+      - otel-collector
+
+  # Sample Python Application
+  python-app:
+    build:
+      context: ./app
+    container_name: python-app
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_SERVICE_NAME=demo-app
+      - OTEL_RESOURCE_ATTRIBUTES=service.version=1.0.0
+    ports:
+      - "5000:5000"
+    networks:
+      - otel-network
+    restart: unless-stopped
+    depends_on:
+      - otel-collector
+
+networks:
+  otel-network:
+    driver: bridge
+
+volumes:
+  prometheus-data:
